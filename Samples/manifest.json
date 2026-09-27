@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Harmless native PE comparison training. Static findings describe changes, not malware intent.",
+  "provenance": "ModifiedConsole.exe is a byte-patched copy of OriginalConsole.exe. The patch manifest reconstructs it exactly.",
+  "toolchain": {
+    "compiler": "clang version 18.1.8\nTarget: x86_64-pc-windows-msvc\nThread model: posix\nInstalledDir: C:\\Program Files\\LLVM\\bin",
+    "linker": "LLD 18.1.8",
+    "windowsSdk": "10.0.26100.0",
+    "linkTimestampUtc": "2024-01-01T00:00:00Z",
+    "fileAlignment": 1024,
+    "sectionAlignment": 4096
+  },
+  "files": [
+    {
+      "name": "ConsoleDemo.exe",
+      "sizeBytes": 6144,
+      "sha256": "486e3c43ec864b7526cbf21bc64a591523c2a0e3ec175e271cce01a20b10540d",
+      "machine": "AMD64 (0x8664)",
+      "format": "PE32+",
+      "managedRuntime": false,
+      "subsystem": 3,
+      "timestamp": 1704067200,
+      "timestampUtc": "2024-01-01T00:00:00Z",
+      "entryRva": 4096,
+      "entryRvaHex": "0x00001000",
+      "dllCharacteristics": 33120,
+      "dllCharacteristicsHex": "0x8160",
+      "checksumOffset": 208,
+      "storedChecksum": 56370,
+      "computedChecksum": 56370,
+      "checksumValid": true,
+      "fileAlignment": 1024,
+      "sectionAlignment": 4096,
+      "sizeOfImage": 24576,
+      "sections": [
+        {
+          "Name": ".text",
+          "HeaderOffset": 384,
+          "VirtualSize": 88,
+          "Rva": 4096,
+          "RawSize": 1024,
+          "RawPointer": 1024,
+          "Characteristics": 1610612768
+        },
+        {
+          "Name": ".rdata",
+          "HeaderOffset": 424,
+          "VirtualSize": 220,
+          "Rva": 8192,
+          "RawSize": 1024,
+          "RawPointer": 2048,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".data",
+          "HeaderOffset": 464,
+          "VirtualSize": 8,
+          "Rva": 12288,
+          "RawSize": 1024,
+          "RawPointer": 3072,
+          "Characteristics": 3221225536
+        },
+        {
+          "Name": ".pdata",
+          "HeaderOffset": 504,
+          "VirtualSize": 12,
+          "Rva": 16384,
+          "RawSize": 1024,
+          "RawPointer": 4096,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".reloc",
+          "HeaderOffset": 544,
+          "VirtualSize": 12,
+          "Rva": 20480,
+          "RawSize": 1024,
+          "RawPointer": 5120,
+          "Characteristics": 1107296320
+        }
+      ],
+      "imports": [
+        {
+          "dll": "KERNEL32.dll",
+          "functions": [
+            "ExitProcess",
+            "GetStdHandle",
+            "WriteFile"
+          ]
+        }
+      ],
+      "overlayOffset": 6144,
+      "overlayLength": 0
+    },
+    {
+      "name": "GuiDemo.exe",
+      "sizeBytes": 6144,
+      "sha256": "945c00b666bfb31f8987e73e6a46a45a41832a7b57404b4500d8a88b883c38ab",
+      "machine": "AMD64 (0x8664)",
+      "format": "PE32+",
+      "managedRuntime": false,
+      "subsystem": 2,
+      "timestamp": 1704067200,
+      "timestampUtc": "2024-01-01T00:00:00Z",
+      "entryRva": 4096,
+      "entryRvaHex": "0x00001000",
+      "dllCharacteristics": 33120,
+      "dllCharacteristicsHex": "0x8160",
+      "checksumOffset": 208,
+      "storedChecksum": 39013,
+      "computedChecksum": 39013,
+      "checksumValid": true,
+      "fileAlignment": 1024,
+      "sectionAlignment": 4096,
+      "sizeOfImage": 24576,
+      "sections": [
+        {
+          "Name": ".text",
+          "HeaderOffset": 384,
+          "VirtualSize": 129,
+          "Rva": 4096,
+          "RawSize": 1024,
+          "RawPointer": 1024,
+          "Characteristics": 1610612768
+        },
+        {
+          "Name": ".rdata",
+          "HeaderOffset": 424,
+          "VirtualSize": 352,
+          "Rva": 8192,
+          "RawSize": 1024,
+          "RawPointer": 2048,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".data",
+          "HeaderOffset": 464,
+          "VirtualSize": 8,
+          "Rva": 12288,
+          "RawSize": 1024,
+          "RawPointer": 3072,
+          "Characteristics": 3221225536
+        },
+        {
+          "Name": ".pdata",
+          "HeaderOffset": 504,
+          "VirtualSize": 12,
+          "Rva": 16384,
+          "RawSize": 1024,
+          "RawPointer": 4096,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".reloc",
+          "HeaderOffset": 544,
+          "VirtualSize": 12,
+          "Rva": 20480,
+          "RawSize": 1024,
+          "RawPointer": 5120,
+          "Characteristics": 1107296320
+        }
+      ],
+      "imports": [
+        {
+          "dll": "KERNEL32.dll",
+          "functions": [
+            "ExitProcess",
+            "GetCommandLineA"
+          ]
+        },
+        {
+          "dll": "USER32.dll",
+          "functions": [
+            "MessageBoxA"
+          ]
+        }
+      ],
+      "overlayOffset": 6144,
+      "overlayLength": 0
+    },
+    {
+      "name": "OriginalConsole.exe",
+      "sizeBytes": 6144,
+      "sha256": "eb8b6e22a0253a3f87546bf36886d457b666af7cb4f2a1b139f345911e0c739b",
+      "machine": "AMD64 (0x8664)",
+      "format": "PE32+",
+      "managedRuntime": false,
+      "subsystem": 3,
+      "timestamp": 1704067200,
+      "timestampUtc": "2024-01-01T00:00:00Z",
+      "entryRva": 4096,
+      "entryRvaHex": "0x00001000",
+      "dllCharacteristics": 33120,
+      "dllCharacteristicsHex": "0x8160",
+      "checksumOffset": 208,
+      "storedChecksum": 64113,
+      "computedChecksum": 64113,
+      "checksumValid": true,
+      "fileAlignment": 1024,
+      "sectionAlignment": 4096,
+      "sizeOfImage": 24576,
+      "sections": [
+        {
+          "Name": ".text",
+          "HeaderOffset": 384,
+          "VirtualSize": 88,
+          "Rva": 4096,
+          "RawSize": 1024,
+          "RawPointer": 1024,
+          "Characteristics": 1610612768
+        },
+        {
+          "Name": ".rdata",
+          "HeaderOffset": 424,
+          "VirtualSize": 220,
+          "Rva": 8192,
+          "RawSize": 1024,
+          "RawPointer": 2048,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".data",
+          "HeaderOffset": 464,
+          "VirtualSize": 8,
+          "Rva": 12288,
+          "RawSize": 1024,
+          "RawPointer": 3072,
+          "Characteristics": 3221225536
+        },
+        {
+          "Name": ".pdata",
+          "HeaderOffset": 504,
+          "VirtualSize": 12,
+          "Rva": 16384,
+          "RawSize": 1024,
+          "RawPointer": 4096,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".reloc",
+          "HeaderOffset": 544,
+          "VirtualSize": 12,
+          "Rva": 20480,
+          "RawSize": 1024,
+          "RawPointer": 5120,
+          "Characteristics": 1107296320
+        }
+      ],
+      "imports": [
+        {
+          "dll": "KERNEL32.dll",
+          "functions": [
+            "ExitProcess",
+            "GetStdHandle",
+            "WriteFile"
+          ]
+        }
+      ],
+      "overlayOffset": 6144,
+      "overlayLength": 0
+    },
+    {
+      "name": "ModifiedConsole.exe",
+      "sizeBytes": 7243,
+      "sha256": "c5df92ac46f4b8ac9bf4d24de3c98671775273a8b032e2c9d5399c4cf77ed29c",
+      "machine": "AMD64 (0x8664)",
+      "format": "PE32+",
+      "managedRuntime": false,
+      "subsystem": 3,
+      "timestamp": 1735689600,
+      "timestampUtc": "2025-01-01T00:00:00Z",
+      "entryRva": 24576,
+      "entryRvaHex": "0x00006000",
+      "dllCharacteristics": 32768,
+      "dllCharacteristicsHex": "0x8000",
+      "checksumOffset": 208,
+      "storedChecksum": 64113,
+      "computedChecksum": 27871,
+      "checksumValid": false,
+      "fileAlignment": 1024,
+      "sectionAlignment": 4096,
+      "sizeOfImage": 28672,
+      "sections": [
+        {
+          "Name": ".text",
+          "HeaderOffset": 384,
+          "VirtualSize": 88,
+          "Rva": 4096,
+          "RawSize": 1024,
+          "RawPointer": 1024,
+          "Characteristics": 3758096416
+        },
+        {
+          "Name": ".rdata",
+          "HeaderOffset": 424,
+          "VirtualSize": 220,
+          "Rva": 8192,
+          "RawSize": 1024,
+          "RawPointer": 2048,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".data",
+          "HeaderOffset": 464,
+          "VirtualSize": 8,
+          "Rva": 12288,
+          "RawSize": 1024,
+          "RawPointer": 3072,
+          "Characteristics": 3221225536
+        },
+        {
+          "Name": ".pdata",
+          "HeaderOffset": 504,
+          "VirtualSize": 12,
+          "Rva": 16384,
+          "RawSize": 1024,
+          "RawPointer": 4096,
+          "Characteristics": 1073741888
+        },
+        {
+          "Name": ".reloc",
+          "HeaderOffset": 544,
+          "VirtualSize": 12,
+          "Rva": 20480,
+          "RawSize": 1024,
+          "RawPointer": 5120,
+          "Characteristics": 1107296320
+        },
+        {
+          "Name": ".demo",
+          "HeaderOffset": 584,
+          "VirtualSize": 5,
+          "Rva": 24576,
+          "RawSize": 1024,
+          "RawPointer": 6144,
+          "Characteristics": 3758096416
+        }
+      ],
+      "imports": [
+        {
+          "dll": "KERNEL32.dll",
+          "functions": [
+            "ExitProcess",
+            "GetStdHandle",
+            "WriteFile"
+          ]
+        }
+      ],
+      "overlayOffset": 7168,
+      "overlayLength": 75
+    }
+  ],
+  "changes": [
+    {
+      "description": "Replace the same-length printed marker ORIGINAL with MODIFIED",
+      "offset": 2077,
+      "offsetHex": "0x0000081D",
+      "length": 8,
+      "beforeBase64": "T1JJR0lOQUw=",
+      "afterBase64": "TU9ESUZJRUQ="
+    },
+    {
+      "description": "Change COFF timestamp from 2024-01-01 to 2025-01-01 UTC",
+      "offset": 128,
+      "offsetHex": "0x00000080",
+      "length": 4,
+      "beforeBase64": "gACSZQ==",
+      "afterBase64": "gIV0Zw=="
+    },
+    {
+      "description": "Remove HIGH_ENTROPY_VA, DYNAMIC_BASE, and NX_COMPAT declarations",
+      "offset": 214,
+      "offsetHex": "0x000000D6",
+      "length": 2,
+      "beforeBase64": "YIE=",
+      "afterBase64": "AIA="
+    },
+    {
+      "description": "Add WRITE permission to the original executable .text section",
+      "offset": 420,
+      "offsetHex": "0x000001A4",
+      "length": 4,
+      "beforeBase64": "IAAAYA==",
+      "afterBase64": "IAAA4A=="
+    },
+    {
+      "description": "Add a .demo section header: five-byte code, read/write/execute permissions",
+      "offset": 584,
+      "offsetHex": "0x00000248",
+      "length": 40,
+      "beforeBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+      "afterBase64": "LmRlbW8AAAAFAAAAAGAAAAAEAAAAGAAAAAAAAAAAAAAAAAAAIAAA4A=="
+    },
+    {
+      "description": "Increase NumberOfSections by one",
+      "offset": 126,
+      "offsetHex": "0x0000007E",
+      "length": 2,
+      "beforeBase64": "BQA=",
+      "afterBase64": "BgA="
+    },
+    {
+      "description": "Increase SizeOfCode to include the new raw code section",
+      "offset": 148,
+      "offsetHex": "0x00000094",
+      "length": 4,
+      "beforeBase64": "AAQAAA==",
+      "afterBase64": "AAgAAA=="
+    },
+    {
+      "description": "Increase SizeOfImage with the required section alignment",
+      "offset": 200,
+      "offsetHex": "0x000000C8",
+      "length": 4,
+      "beforeBase64": "AGAAAA==",
+      "afterBase64": "AHAAAA=="
+    },
+    {
+      "description": "Redirect AddressOfEntryPoint to the .demo section",
+      "offset": 160,
+      "offsetHex": "0x000000A0",
+      "length": 4,
+      "beforeBase64": "ABAAAA==",
+      "afterBase64": "AGAAAA=="
+    },
+    {
+      "description": "Append a relative JMP to the original entry RVA, followed by zero file-alignment padding",
+      "offset": 6144,
+      "offsetHex": "0x00001800",
+      "length": 1024,
+      "beforeBase64": "",
+      "afterBase64": "6fuv//8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    },
+    {
+      "description": "Append an explicitly labeled, non-executed training overlay",
+      "offset": 7168,
+      "offsetHex": "0x00001C00",
+      "length": 75,
+      "beforeBase64": "",
+      "afterBase64": "DQpQRSBXT1JLU0hPUCBUUkFJTklORyBPVkVSTEFZIC0gaGFybWxlc3MgYXBwZW5kZWQgYnl0ZXM7IG5ldmVyIGV4ZWN1dGVkLg0K"
+    }
+  ],
+  "retainedChecksum": {
+    "offset": 208,
+    "originalValue": 64113,
+    "modifiedStoredValue": 64113,
+    "modifiedComputedValue": 27871,
+    "explanation": "The valid original checksum is intentionally left stale after patching."
+  },
+  "entryStub": {
+    "offset": 6144,
+    "rva": 24576,
+    "bytesHex": "E9 FB AF FF FF",
+    "instruction": "JMP rel32",
+    "displacement": -20485,
+    "targetRva": 4096,
+    "behavior": "Immediately transfer control to the original console entry point; no other new code."
+  }
+}

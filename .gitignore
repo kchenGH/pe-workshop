@@ -1,0 +1,24 @@
+# Keep this repository scoped to PE Workshop inside the larger OS workspace.
+/*
+!/.gitignore
+!/.gitattributes
+!/LICENSE
+!/THIRD_PARTY_NOTICES.md
+!/README.md
+!/PE-Editor/
+!/Samples/
+
+**/bin/
+**/obj/
+**/artifacts/
+**/.vs/
+**/.superpowers/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+/Samples/build/
+
+# Publish the user guide; local task notes and historical review logs stay local.
+/PE-Editor/docs/*
+!/PE-Editor/docs/USER-GUIDE.md
