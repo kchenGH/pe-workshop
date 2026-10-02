@@ -267,6 +267,17 @@ internal static partial class Program
             var r = PeDwarfReader.Read(f.Image()); Equal(DebugSymbolStatus.Partial, r.Status); True(r.Variables.Count < variableCount);
             True(r.Diagnostics.Any(d => d.Contains("32 MiB") && d.Contains("string"))); True(r.Variables.First().Location.StartsWith("Recorded compile-time constant \""));
         });
+        foreach (int version in new[] { 2, 3, 4, 5 }) Test($"dwarf-line-entry-budget-is-global-v{version}", () => {
+            const int files = 1024, unitCount = 260; var f = new DwarfFixture(version);
+            f.Line = SharedAbsoluteDwarfLine(version, files); f.LineStrings = Encoding.UTF8.GetBytes("C:/shared.c\0");
+            f.Abbrev(1, 0x11, true, (0x10, version < 4 ? 0x06 : 0x17)); f.Die(1, "cu", 0ul);
+            f.Abbrev(2, 0x24, false, (3, 8)); f.Die(2, "int", "int");
+            f.Abbrev(3, 0x34, false, (3, 8), (0x49, 0x13), (0x3a, 0x0f)); f.Die(3, "variable", "shared", new DRef("int"), (ulong)(version == 5 ? files - 1 : files));
+            var info = f.Info(); var b = DwarfPe(false, (".debug_info", Enumerable.Range(0, unitCount).SelectMany(_ => info).ToArray()), (".debug_abbrev", f.Abbreviations()), (".debug_line", f.Line), (".debug_line_str", f.LineStrings));
+            var r = PeDwarfReader.Read(b); Equal(DebugSymbolStatus.Partial, r.Status); Equal(unitCount, r.Variables.Count);
+            Equal("C:/shared.c", r.Variables.First().SourceFile); Equal("", r.Variables.Last().SourceFile);
+            True(r.Diagnostics.Any(d => d.Contains("line entries") && d.Contains("262144") && d.Contains("global")));
+        });
         Test("dwarf-specification-graph-traversal-is-bounded", () => {
             var f = new DwarfFixture(); f.Abbrev(1, 0x11, true); f.Die(1, "cu");
             f.Abbrev(2, 0x2e, false, (0x31, 0x13), (0x47, 0x13)); f.Abbrev(3, 0x2e, false); f.Abbrev(4, 0x34, false, (0x31, 0x13));
@@ -387,6 +398,19 @@ internal static partial class Program
         for (int i = 0; i < files; i++) { DFixed(header, fileStringOffset, 4); DUleb(header, 0); }
         var result = new List<byte>(); DFixed(result, (ulong)(2 + 2 + 4 + header.Count), 4); DFixed(result, 5, 2); result.AddRange(new byte[] { 4, 0 });
         DFixed(result, (ulong)header.Count, 4); result.AddRange(header); return result.ToArray();
+    }
+    private static byte[] SharedAbsoluteDwarfLine(int version, int files) {
+        var header = new List<byte> { 1 }; if (version >= 4) header.Add(1); header.AddRange(new byte[] { 1, 0xfb, 14, 13 }); header.AddRange(new byte[12]);
+        if (version == 5) {
+            header.AddRange(new byte[] { 0, 0, 1 }); DUleb(header, 1); DUleb(header, 0x1f); DUleb(header, (ulong)files);
+            for (int i = 0; i < files; i++) DFixed(header, 0, 4);
+        } else {
+            header.Add(0);
+            for (int i = 0; i < files; i++) { header.AddRange(Encoding.UTF8.GetBytes("C:/shared.c\0")); header.AddRange(new byte[] { 0, 0, 0 }); }
+            header.Add(0);
+        }
+        var result = new List<byte>(); DFixed(result, (ulong)(2 + (version == 5 ? 2 : 0) + 4 + header.Count), 4); DFixed(result, (ulong)version, 2);
+        if (version == 5) result.AddRange(new byte[] { 4, 0 }); DFixed(result, (ulong)header.Count, 4); result.AddRange(header); return result.ToArray();
     }
     private static byte[] DwarfPe(bool x64, params (string Name, byte[] Bytes)[] data) {
         int sectionStart = 0x98 + (x64 ? 240 : 224), rawStart = (sectionStart + data.Length * 40 + 511) & ~511;

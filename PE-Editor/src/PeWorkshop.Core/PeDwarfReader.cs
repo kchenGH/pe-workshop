@@ -21,7 +21,7 @@ public static class PeDwarfReader
     }
 
     private const int MaxDies = 200000, MaxVariables = 50000, MaxUnits = 4096, MaxDepth = 64;
-    private const int MaxAttributes = 1000000, MaxAbbreviations = 65536, MaxStringBytes = 16384;
+    private const int MaxAttributes = 1000000, MaxAbbreviations = 65536, MaxStringBytes = 16384, MaxLineEntries = 262144;
     private const int MaxStringStorageBytes = 32 * 1024 * 1024, MaxRenderedCharacters = 4096;
     private sealed class DwarfException(string message, bool unsupported = false, bool limit = false) : Exception(message)
     {
@@ -120,7 +120,7 @@ public static class PeDwarfReader
         private readonly HashSet<string> diagnosticSet = new(StringComparer.Ordinal);
         private readonly Dictionary<int, string> strings = [];
         private readonly Dictionary<int, Dictionary<ulong, Abbreviation>> abbreviations = [];
-        private int dieCount, attributeCount, abbreviationCount, stringStorageBytes;
+        private int dieCount, attributeCount, abbreviationCount, stringStorageBytes, lineEntryCount;
         private bool malformed, unsupported, incomplete;
 
         private void Diagnostic(string message, bool isMalformed = false, bool isUnsupported = false)
@@ -598,11 +598,13 @@ public static class PeDwarfReader
                     dirs[0] = compDir;
                     for (ulong i = 1; ; i++) {
                         cancellation.ThrowIfCancellationRequested(); string directory = String(cursor); if (directory.Length == 0) break;
-                        if (i > 65536) throw new DwarfException("Line table directories exceed 65536 entries."); dirs[i] = JoinPath(compDir, directory);
+                        if (i > 65536) throw new DwarfException("Line table directories exceed 65536 entries.");
+                        ChargeLineEntry(); dirs[i] = JoinPath(compDir, directory);
                     }
                     for (ulong i = 1; ; i++) {
                         cancellation.ThrowIfCancellationRequested(); string file = String(cursor); if (file.Length == 0) break;
                         if (i > 65536) throw new DwarfException("Line table files exceed 65536 entries.");
+                        ChargeLineEntry();
                         ulong directory = cursor.Uleb(); cursor.Uleb(); cursor.Uleb();
                         if (IsAbsolute(file)) result[i] = Normalize(file);
                         else if (dirs.TryGetValue(directory, out string? parent)) result[i] = JoinPath(parent, file);
@@ -613,14 +615,14 @@ public static class PeDwarfReader
                     var directoryFormats = LineFormats(cursor); ulong directoryCount = cursor.Uleb();
                     if (directoryCount > 65536) throw new DwarfException("Line table directories exceed 65536 entries.");
                     for (ulong i = 0; i < directoryCount; i++) {
-                        cancellation.ThrowIfCancellationRequested(); var entry = LineEntry(cursor, directoryFormats, lineUnit);
+                        ChargeLineEntry(); var entry = LineEntry(cursor, directoryFormats, lineUnit);
                         if (entry.TryGetValue(1, out var path) && path.Text is not null) dirs[i] = JoinPath(compDir, path.Text);
                         else throw new DwarfException("Line directory path is missing or has an unsupported form.", true);
                     }
                     var fileFormats = LineFormats(cursor); ulong fileCount = cursor.Uleb();
                     if (fileCount > 65536) throw new DwarfException("Line table files exceed 65536 entries.");
                     for (ulong i = 0; i < fileCount; i++) {
-                        cancellation.ThrowIfCancellationRequested(); var entry = LineEntry(cursor, fileFormats, lineUnit);
+                        ChargeLineEntry(); var entry = LineEntry(cursor, fileFormats, lineUnit);
                         if (!entry.TryGetValue(1, out var path) || path.Text is null) throw new DwarfException("Line file path is missing or has an unsupported form.", true);
                         ulong directory = 0;
                         if (entry.TryGetValue(2, out var dir) && !Numeric(dir, out directory)) throw new DwarfException("Invalid line directory index.");
@@ -632,6 +634,17 @@ public static class PeDwarfReader
                 }
             } catch (DwarfException e) { Diagnostic($"Line table for compilation unit 0x{unit.Start:X}: {e.Message}", !e.Unsupported && !e.Limit, e.Unsupported); }
             return result;
+        }
+        private void ChargeLineEntry()
+        {
+            cancellation.ThrowIfCancellationRequested();
+            // Cached path strings can still populate distinct Unit.Files dictionaries.
+            // Count every parsed directory/file record across all versions and units.
+            if (lineEntryCount >= MaxLineEntries) {
+                incomplete = true;
+                throw new DwarfException("DWARF line entries exceed the global 262144-entry budget; file tables were truncated.", limit: true);
+            }
+            lineEntryCount++;
         }
         private static (ulong Content, uint Form)[] LineFormats(Cursor cursor)
         {
