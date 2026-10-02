@@ -205,6 +205,68 @@ internal static partial class Program
             f.Die(4, "constarray", new DRef("array")); f.Die(5, "v", "qualified_array", new DRef("constarray"), 2ul, 1ul, new byte[] { 0x50 });
             Equal("const Count[]", PeDwarfReader.Read(f.Image()).Variables.Single(v => v.Name == "qualified_array").Type);
         });
+        Test("dwarf-qualifier-chains-follow-pointer-and-array-structure", () => {
+            var f = new DwarfFixture(); f.Abbrev(1, 0x11, true); f.Die(1, "cu");
+            f.Abbrev(2, 0x24, false, (3, 8)); f.Die(2, "int", "int");
+            f.Abbrev(3, 0x0f, false, (0x49, 0x13)); f.Die(3, "pointer", new DRef("int"));
+            f.Abbrev(4, 0x26, false, (0x49, 0x13)); f.Die(4, "constpointer", new DRef("pointer"));
+            f.Abbrev(5, 0x35, false, (0x49, 0x13)); f.Die(5, "volatileconstpointer", new DRef("constpointer"));
+            f.Abbrev(6, 0x01, true, (0x49, 0x13)); f.Die(6, "pointerarray", new DRef("pointer"));
+            f.Abbrev(7, 0x21, false, (0x37, 0x0f)); f.Die(7, "dimension", 3ul); f.End();
+            f.Die(4, "constpointerarray", new DRef("pointerarray"));
+            f.Die(4, "constint", new DRef("int")); f.Die(5, "volatileconstint", new DRef("constint")); f.Die(3, "pointeequalified", new DRef("volatileconstint"));
+            f.Die(5, "arrayqualified", new DRef("constpointerarray"));
+            f.Die(4, "cycle", new DRef("cycle"));
+            f.Abbrev(8, 0x34, false, (3, 8), (0x49, 0x13));
+            f.Die(8, "chain", "chain", new DRef("volatileconstpointer")); f.Die(8, "array", "array", new DRef("constpointerarray"));
+            f.Die(8, "pointee", "pointee", new DRef("pointeequalified")); f.Die(8, "arrayboth", "arrayboth", new DRef("arrayqualified"));
+            f.Die(8, "cyclic", "cyclic", new DRef("cycle"));
+            var r = PeDwarfReader.Read(f.Image()); Equal(DebugSymbolStatus.Partial, r.Status);
+            Equal("int* const volatile", r.Variables.Single(v => v.Name == "chain").Type);
+            Equal("int* const[3]", r.Variables.Single(v => v.Name == "array").Type);
+            Equal("const volatile int*", r.Variables.Single(v => v.Name == "pointee").Type);
+            Equal("int* const volatile[3]", r.Variables.Single(v => v.Name == "arrayboth").Type);
+            True(r.Variables.Single(v => v.Name == "cyclic").Type.Contains("cycle"));
+        });
+        Test("dwarf-array-dimension-truncation-is-explicit", () => {
+            var f = new DwarfFixture(); f.Abbrev(1, 0x11, true); f.Die(1, "cu");
+            f.Abbrev(2, 0x24, false, (3, 8)); f.Die(2, "int", "int");
+            f.Abbrev(3, 0x01, true, (0x49, 0x13)); f.Die(3, "array", new DRef("int"));
+            f.Abbrev(4, 0x21, false, (0x37, 0x0f)); for (int i = 0; i < 65; i++) f.Die(4, "dimension" + i, 3ul); f.End();
+            f.Abbrev(5, 0x34, false, (3, 8), (0x49, 0x13), (0x3b, 0x0f)); f.Die(5, "variable", "many_dimensions", new DRef("array"), 42ul);
+            var b = f.Image(); var r = PeDwarfReader.Read(b); Equal(DebugSymbolStatus.Partial, r.Status);
+            var v = r.Variables.Single(); Equal(64, v.Type.Split("[3]").Length - 1); True(v.Type.Contains("dimensions truncated"));
+            True(r.Diagnostics.Any(d => d.Contains("dimensions") && d.Contains("64"))); Equal(42, v.Line);
+            Equal((int)PeImage.Parse(b).Sections[0].RawOffset + f.Offsets["variable"], v.DebugOffset); Equal(f.Lengths["variable"], v.DebugLength);
+        });
+        Test("dwarf-array-qualification-reaches-pointer-elements", () => {
+            var f = new DwarfFixture(); f.Abbrev(1, 0x11, true); f.Die(1, "cu");
+            f.Abbrev(2, 0x24, false, (3, 8)); f.Die(2, "int", "int");
+            f.Abbrev(3, 0x0f, false, (0x49, 0x13)); f.Die(3, "pointer", new DRef("int"));
+            f.Abbrev(4, 0x01, true, (0x49, 0x13)); f.Die(4, "array", new DRef("pointer"));
+            f.Abbrev(5, 0x21, false, (0x37, 0x0f)); f.Die(5, "dimension", 3ul); f.End();
+            f.Abbrev(6, 0x26, false, (0x49, 0x13)); f.Die(6, "constarray", new DRef("array"));
+            f.Abbrev(7, 0x34, false, (3, 8), (0x49, 0x13)); f.Die(7, "variable", "qualified_array", new DRef("constarray"));
+            var r = PeDwarfReader.Read(f.Image()); Equal(DebugSymbolStatus.Available, r.Status); Equal("int* const[3]", r.Variables.Single().Type);
+        });
+        Test("dwarf-derived-path-budget-is-global-across-shared-line-tables", () => {
+            const int files = 550; var f = new DwarfFixture(5); f.LineStrings = Encoding.UTF8.GetBytes(new string('d', 8192) + "\0" + new string('f', 8192) + "\0");
+            f.Line = SharedDwarf5Line(files, 8193); f.Abbrev(1, 0x11, true, (0x1b, 8), (0x10, 0x17)); f.Die(1, "cu", "C:/root", 0ul);
+            f.Abbrev(2, 0x24, false, (3, 8)); f.Die(2, "int", "int");
+            f.Abbrev(3, 0x34, false, (3, 8), (0x49, 0x13), (0x3a, 0x0f), (0x3b, 0x0f));
+            f.Die(3, "first", "first", new DRef("int"), 0ul, 1ul); f.Die(3, "last", "last", new DRef("int"), (ulong)files - 1, 2ul);
+            var b = DwarfPe(false, (".debug_info", f.Info().Concat(f.Info()).ToArray()), (".debug_abbrev", f.Abbreviations()), (".debug_line", f.Line), (".debug_line_str", f.LineStrings));
+            var before = (byte[])b.Clone(); var r = PeDwarfReader.Read(b); Equal(DebugSymbolStatus.Partial, r.Status); Equal(4, r.Variables.Count);
+            True(r.Diagnostics.Any(d => d.Contains("32 MiB") && d.Contains("string"))); True(r.Variables[0].SourceFile.StartsWith("C:/root/"));
+            Equal("", r.Variables.Last().SourceFile); Equal(2, r.Variables.Last().Line); True(before.SequenceEqual(b));
+        });
+        Test("dwarf-derived-constant-output-has-global-string-budget", () => {
+            const int variableCount = 2200; var f = new DwarfFixture(); f.Strings = Encoding.UTF8.GetBytes(new string('c', 8192) + "\0");
+            f.Abbrev(1, 0x11, true); f.Die(1, "cu"); f.Abbrev(2, 0x34, false, (0x1c, 0x0e));
+            for (int i = 0; i < variableCount; i++) f.Die(2, "constant" + i, 0ul);
+            var r = PeDwarfReader.Read(f.Image()); Equal(DebugSymbolStatus.Partial, r.Status); True(r.Variables.Count < variableCount);
+            True(r.Diagnostics.Any(d => d.Contains("32 MiB") && d.Contains("string"))); True(r.Variables.First().Location.StartsWith("Recorded compile-time constant \""));
+        });
         Test("dwarf-specification-graph-traversal-is-bounded", () => {
             var f = new DwarfFixture(); f.Abbrev(1, 0x11, true); f.Die(1, "cu");
             f.Abbrev(2, 0x2e, false, (0x31, 0x13), (0x47, 0x13)); f.Abbrev(3, 0x2e, false); f.Abbrev(4, 0x34, false, (0x31, 0x13));
@@ -317,6 +379,14 @@ internal static partial class Program
         }
         var result = new List<byte>(); DFixed(result, (ulong)(2 + (version == 5 ? 2 : 0) + 4 + header.Count), 4); DFixed(result, (ulong)version, 2);
         if (version == 5) result.AddRange(new byte[] { 8, 0 }); DFixed(result, (ulong)header.Count, 4); result.AddRange(header); return result.ToArray();
+    }
+    private static byte[] SharedDwarf5Line(int files, ulong fileStringOffset) {
+        var header = new List<byte> { 1, 1, 1, 0xfb, 14, 13 }; header.AddRange(new byte[12]);
+        header.Add(1); DUleb(header, 1); DUleb(header, 0x1f); DUleb(header, 1); DFixed(header, 0, 4);
+        header.Add(2); DUleb(header, 1); DUleb(header, 0x1f); DUleb(header, 2); DUleb(header, 0x0f); DUleb(header, (ulong)files);
+        for (int i = 0; i < files; i++) { DFixed(header, fileStringOffset, 4); DUleb(header, 0); }
+        var result = new List<byte>(); DFixed(result, (ulong)(2 + 2 + 4 + header.Count), 4); DFixed(result, 5, 2); result.AddRange(new byte[] { 4, 0 });
+        DFixed(result, (ulong)header.Count, 4); result.AddRange(header); return result.ToArray();
     }
     private static byte[] DwarfPe(bool x64, params (string Name, byte[] Bytes)[] data) {
         int sectionStart = 0x98 + (x64 ? 240 : 224), rawStart = (sectionStart + data.Length * 40 + 511) & ~511;

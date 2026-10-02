@@ -22,10 +22,11 @@ public static class PeDwarfReader
 
     private const int MaxDies = 200000, MaxVariables = 50000, MaxUnits = 4096, MaxDepth = 64;
     private const int MaxAttributes = 1000000, MaxAbbreviations = 65536, MaxStringBytes = 16384;
-    private const int MaxDecodedStringBytes = 32 * 1024 * 1024;
-    private sealed class DwarfException(string message, bool unsupported = false) : Exception(message)
+    private const int MaxStringStorageBytes = 32 * 1024 * 1024, MaxRenderedCharacters = 4096;
+    private sealed class DwarfException(string message, bool unsupported = false, bool limit = false) : Exception(message)
     {
         public bool Unsupported { get; } = unsupported;
+        public bool Limit { get; } = limit;
     }
     private readonly record struct Section(int Start, int End);
     private readonly record struct Block(int Start, int Length);
@@ -119,7 +120,7 @@ public static class PeDwarfReader
         private readonly HashSet<string> diagnosticSet = new(StringComparer.Ordinal);
         private readonly Dictionary<int, string> strings = [];
         private readonly Dictionary<int, Dictionary<ulong, Abbreviation>> abbreviations = [];
-        private int dieCount, attributeCount, abbreviationCount, decodedStringBytes;
+        private int dieCount, attributeCount, abbreviationCount, stringStorageBytes;
         private bool malformed, unsupported, incomplete;
 
         private void Diagnostic(string message, bool isMalformed = false, bool isUnsupported = false)
@@ -161,7 +162,10 @@ public static class PeDwarfReader
             var result = new List<PeVariable>(variables.Count);
             foreach (var variable in variables) {
                 cancellation.ThrowIfCancellationRequested();
-                result.Add(Variable(variable, info));
+                try { result.Add(Variable(variable, info)); }
+                catch (DwarfException e) {
+                    incomplete = true; Diagnostic($"Variable output at DIE 0x{variable.Offset:X}: {e.Message}"); break;
+                }
             }
             if (units.Count == 0 && !malformed && !unsupported) Diagnostic(".debug_info contains no compilation units.", true);
             return Result(result.AsReadOnly(), "DWARF", units.Count != 0);
@@ -255,7 +259,7 @@ public static class PeDwarfReader
                     if (unit.Root is null || parents.Count != 0) throw new DwarfException("Unterminated compilation unit DIE tree.");
                     units.Add(unit);
                 } catch (DwarfException e) {
-                    Diagnostic($"Compilation unit at 0x{unit.Start:X}: {e.Message}", !e.Unsupported, e.Unsupported);
+                    Diagnostic($"Compilation unit at 0x{unit.Start:X}: {e.Message}", !e.Unsupported && !e.Limit, e.Unsupported);
                     if (e.Unsupported) {
                         // Unsupported forms invalidate this unit. Do not expose a prefix as if the
                         // remaining attributes or references had been decoded successfully.
@@ -347,10 +351,56 @@ public static class PeDwarfReader
             if (cursor.Position == limit) throw new DwarfException("DWARF string is unterminated or exceeds 16 KiB.");
             int length = cursor.Position - start; cursor.Position++;
             if (strings.TryGetValue(start, out var cached)) return cached;
-            if (length > MaxDecodedStringBytes - decodedStringBytes) throw new DwarfException("Decoded DWARF strings exceed the 32 MiB budget.");
-            decodedStringBytes += length;
-            try { string value = new UTF8Encoding(false, true).GetString(bytes, start, length); strings[start] = value; return value; }
+            try {
+                var encoding = new UTF8Encoding(false, true);
+                ChargeString(encoding.GetCharCount(bytes, start, length));
+                string value = encoding.GetString(bytes, start, length); strings[start] = value; return value;
+            }
             catch (DecoderFallbackException) { throw new DwarfException("DWARF string contains invalid UTF-8."); }
+        }
+        // Count UTF-16 payload for every decoded/generated string allocation, including
+        // temporary type joins and repeated line tables in separate compilation units.
+        // The separately capped diagnostic pool remains usable after this budget runs out.
+        private void ChargeString(int characters)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (characters > (MaxStringStorageBytes - stringStorageBytes) / sizeof(char)) {
+                incomplete = true;
+                throw new DwarfException("Decoded and derived DWARF string storage exceeds the 32 MiB UTF-16 budget; output was truncated.", limit: true);
+            }
+            stringStorageBytes += characters * sizeof(char);
+        }
+        private string Text(string? kind, params string[] parts) => JoinText(kind, parts, "");
+        private string JoinText(string? kind, IReadOnlyList<string> parts, string separator)
+        {
+            long length = (long)Math.Max(0, parts.Count - 1) * separator.Length;
+            foreach (string part in parts) length += part.Length;
+            bool truncated = kind is not null && length > MaxRenderedCharacters;
+            if (truncated) Diagnostic($"Rendered DWARF {kind} was truncated at 4096 characters.", true);
+            if (!truncated && parts.Count == 1) return parts[0];
+            int contentLength = (int)(truncated ? MaxRenderedCharacters : length), outputLength = contentLength + (truncated ? 1 : 0);
+            if (outputLength == 0) return "";
+            ChargeString(outputLength);
+            return string.Create(outputLength, (parts, separator, contentLength, truncated), static (output, state) => {
+                int at = 0;
+                for (int i = 0; i < state.parts.Count && at < state.contentLength; i++) {
+                    if (i != 0) {
+                        int count = Math.Min(state.separator.Length, state.contentLength - at);
+                        state.separator.AsSpan(0, count).CopyTo(output[at..]); at += count;
+                    }
+                    int take = Math.Min(state.parts[i].Length, state.contentLength - at);
+                    state.parts[i].AsSpan(0, take).CopyTo(output[at..]); at += take;
+                }
+                if (state.truncated) output[^1] = '…';
+            });
+        }
+        private string Number(ulong value, string? format = null)
+        {
+            ChargeString(20); return value.ToString(format, CultureInfo.InvariantCulture);
+        }
+        private string Number(long value)
+        {
+            ChargeString(20); return value.ToString(CultureInfo.InvariantCulture);
         }
         private string SectionString(string name, ulong offset)
         {
@@ -402,67 +452,67 @@ public static class PeDwarfReader
             Die? type = Referenced(value.Value.Value, die.Offset);
             return type is null ? "<unresolved type reference>" : Type(type, [], 0);
         }
-        private string Type(Die die, HashSet<int> seen, int depth)
+        private static string Qualifiers(int value) => value switch {
+            0 => "", 1 => "const", 2 => "volatile", 3 => "const volatile",
+            4 => "restrict", 5 => "const restrict", 6 => "volatile restrict", 7 => "const volatile restrict",
+            8 => "atomic", 9 => "const atomic", 10 => "volatile atomic", 11 => "const volatile atomic",
+            12 => "restrict atomic", 13 => "const restrict atomic", 14 => "volatile restrict atomic", _ => "const volatile restrict atomic"
+        };
+        private string Type(Die die, HashSet<int> seen, int depth, int qualifiers = 0)
         {
             cancellation.ThrowIfCancellationRequested();
             if (depth >= MaxDepth || !seen.Add(die.Offset)) {
                 Diagnostic($"Type cycle or reference depth limit at DIE 0x{die.Offset:X}.", true); return "<type cycle/depth limit>";
             }
             string name = Name(die), type;
-            string Underlying(bool voidAllowed = false) {
+            string Qualified(string value) => qualifiers == 0 ? Text("type", value) : Text("type", Qualifiers(qualifiers), " ", value);
+            string Underlying(bool voidAllowed = false, int inheritedQualifiers = 0) {
                 var attr = AttributeOf(die, 0x49);
                 if (attr is null) return voidAllowed ? "void" : "<unresolved type>";
                 Die? target = Referenced(attr.Value.Value, die.Offset);
-                return target is null ? "<unresolved type reference>" : Type(target, seen, depth + 1);
-            }
-            string Qualified(string qualifier) {
-                string underlying = Underlying();
-                var attr = AttributeOf(die, 0x49);
-                Die? target = attr is null ? null : Referenced(attr.Value.Value, die.Offset);
-                // A qualifier on a pointer applies to the pointer itself. Prefixing it
-                // would instead describe a pointer to a qualified pointee.
-                if (target?.Tag == 0x0f) return underlying + " " + qualifier;
-                // For an array, qualification applies to its elements. GCC can record
-                // both an outer array qualifier and the same qualifier on its elements.
-                if (target?.Tag == 0x01 && underlying.StartsWith(qualifier + " ", StringComparison.Ordinal)) return underlying;
-                return qualifier + " " + underlying;
+                return target is null ? "<unresolved type reference>" : Type(target, seen, depth + 1, inheritedQualifiers);
             }
             switch (die.Tag) {
-                case 0x24: type = name.Length != 0 ? name : "<unnamed base type>"; break;
-                case 0x16: type = name.Length != 0 ? name : Underlying(); break;
+                case 0x24: type = Qualified(name.Length != 0 ? name : "<unnamed base type>"); break;
+                case 0x16: type = name.Length != 0 ? Qualified(name) : Underlying(inheritedQualifiers: qualifiers); break;
                 case 0x02: case 0x04: case 0x13: case 0x17:
-                    type = name.Length != 0 ? name : die.Tag switch { 0x02 => "<anonymous class>", 0x04 => "<anonymous enum>", 0x13 => "<anonymous struct>", _ => "<anonymous union>" }; break;
-                case 0x0f: type = Underlying(true) + "*"; break;
-                case 0x10: type = Underlying() + "&"; break;
-                case 0x42: type = Underlying() + "&&"; break;
-                case 0x26: type = Qualified("const"); break;
-                case 0x35: type = Qualified("volatile"); break;
-                case 0x37: type = Qualified("restrict"); break;
-                case 0x47: type = Qualified("atomic"); break;
+                    type = Qualified(name.Length != 0 ? name : die.Tag switch { 0x02 => "<anonymous class>", 0x04 => "<anonymous enum>", 0x13 => "<anonymous struct>", _ => "<anonymous union>" }); break;
+                case 0x0f: type = Text("type", Underlying(true), "*", qualifiers == 0 ? "" : " ", Qualifiers(qualifiers)); break;
+                case 0x10: type = Text("type", Underlying(inheritedQualifiers: qualifiers), "&"); break;
+                case 0x42: type = Text("type", Underlying(inheritedQualifiers: qualifiers), "&&"); break;
+                // Qualifiers follow the recorded type level. Arrays pass them to their
+                // elements; pointers consume them after '*', leaving pointees separate.
+                case 0x26: type = Underlying(inheritedQualifiers: qualifiers | 1); break;
+                case 0x35: type = Underlying(inheritedQualifiers: qualifiers | 2); break;
+                case 0x37: type = Underlying(inheritedQualifiers: qualifiers | 4); break;
+                case 0x47: type = Underlying(inheritedQualifiers: qualifiers | 8); break;
                 case 0x01:
-                    type = Underlying();
-                    var dimensions = die.Children?.Where(c => c.Tag == 0x21).Take(64).ToArray() ?? [];
-                    if (dimensions.Length == 0) type += "[]";
-                    foreach (var range in dimensions) type += "[" + ArrayCount(range) + "]";
+                    type = Underlying(inheritedQualifiers: qualifiers);
+                    var dimensions = die.Children?.Where(c => c.Tag == 0x21).Take(65).ToArray() ?? [];
+                    if (dimensions.Length == 0) type = Text("type", type, "[]");
+                    foreach (var range in dimensions.Take(64)) type = Text("type", type, "[", ArrayCount(range), "]");
+                    if (dimensions.Length > 64) {
+                        incomplete = true; Diagnostic("DWARF array dimensions were truncated at 64 entries.");
+                        type = Text("type", type, "[<dimensions truncated>]");
+                    }
                     break;
-                case 0x15: type = Underlying(true) + " (function)"; break;
-                case 0x3b: type = name.Length == 0 ? "<unspecified type>" : name; break;
-                default: type = name.Length == 0 ? $"<unsupported type tag 0x{die.Tag:X}>" : name; break;
+                case 0x15: type = Qualified(Text("type", Underlying(true), " (function)")); break;
+                case 0x3b: type = Qualified(name.Length == 0 ? "<unspecified type>" : name); break;
+                default: type = Qualified(name.Length == 0 ? Text("type", "<unsupported type tag 0x", Number(die.Tag, "X"), ">") : name); break;
             }
             seen.Remove(die.Offset);
-            if (type.Length > 4096) { Diagnostic("Rendered DWARF type was truncated at 4096 characters.", true); type = type[..4096] + "…"; }
             return type;
         }
         private string ArrayCount(Die range)
         {
             var count = AttributeOf(range, 0x37);
-            if (count is not null && Numeric(count.Value.Value, out ulong size)) return size.ToString(CultureInfo.InvariantCulture);
+            if (count is not null && Numeric(count.Value.Value, out ulong size)) return Number(size);
             var upper = AttributeOf(range, 0x2f); if (upper is null) return "";
             var lower = AttributeOf(range, 0x22);
             if (Numeric(upper.Value.Value, out ulong hi)) {
                 ulong lo = 0;
                 if (lower is not null && !Numeric(lower.Value.Value, out lo)) return "?";
-                return hi >= lo && hi - lo != ulong.MaxValue ? (hi - lo + 1).ToString(CultureInfo.InvariantCulture) : "?";
+                return hi >= lo && hi - lo != ulong.MaxValue ? Number(hi - lo + 1) : "?";
             }
             return "?";
         }
@@ -507,11 +557,10 @@ public static class PeDwarfReader
             var parts = new List<string>();
             for (Die? p = die.Parent; p is not null; p = p.Parent) {
                 if (p.Tag is 0x39 or 0x2e or 0x1d or 0x02 or 0x13 or 0x17) {
-                    string name = Name(p); parts.Add(name.Length == 0 ? $"<scope at 0x{p.Offset:X}>" : name);
-                } else if (p.Tag == 0x0b) parts.Add($"<lexical at 0x{p.Offset:X}>");
+                    string name = Name(p); parts.Add(name.Length == 0 ? Text(null, "<scope at 0x", Number((ulong)p.Offset, "X"), ">") : name);
+                } else if (p.Tag == 0x0b) parts.Add(Text(null, "<lexical at 0x", Number((ulong)p.Offset, "X"), ">"));
             }
-            parts.Reverse(); string value = string.Join("::", parts);
-            if (value.Length > 4096) { Diagnostic("Rendered DWARF scope was truncated at 4096 characters.", true); value = value[..4096] + "…"; }
+            parts.Reverse(); string value = JoinText("scope", parts, "::");
             return value.Length == 0 ? "Compilation unit" : value;
         }
         private string SourceFile(Die die)
@@ -581,7 +630,7 @@ public static class PeDwarfReader
                         else Diagnostic($"Unknown line table directory index {directory}.", true);
                     }
                 }
-            } catch (DwarfException e) { Diagnostic($"Line table for compilation unit 0x{unit.Start:X}: {e.Message}", !e.Unsupported, e.Unsupported); }
+            } catch (DwarfException e) { Diagnostic($"Line table for compilation unit 0x{unit.Start:X}: {e.Message}", !e.Unsupported && !e.Limit, e.Unsupported); }
             return result;
         }
         private static (ulong Content, uint Form)[] LineFormats(Cursor cursor)
@@ -606,29 +655,41 @@ public static class PeDwarfReader
         }
         // Paths are textual metadata. They are never opened or resolved against the host's
         // filesystem, and Windows drive paths also work when decoding on another OS.
-        private static string Normalize(string value) => value.Replace('\\', '/');
+        private string Normalize(string value)
+        {
+            if (!value.Contains('\\')) return value;
+            ChargeString(value.Length); return value.Replace('\\', '/');
+        }
         private static bool IsAbsolute(string value) => value.StartsWith('/') || value.StartsWith('\\') || value.Length >= 3 && char.IsAsciiLetter(value[0]) && value[1] == ':' && value[2] is '/' or '\\';
-        private static string JoinPath(string directory, string file)
+        private string JoinPath(string directory, string file)
         {
             if (IsAbsolute(file) || directory.Length == 0 || directory == ".") return Normalize(file);
-            return Normalize(directory).TrimEnd('/') + "/" + Normalize(file);
+            int directoryLength = directory.Length;
+            while (directoryLength > 0 && directory[directoryLength - 1] is '/' or '\\') directoryLength--;
+            int length = directoryLength + 1 + file.Length;
+            ChargeString(length);
+            return string.Create(length, (directory, file, directoryLength), static (output, state) => {
+                for (int i = 0; i < state.directoryLength; i++) output[i] = state.directory[i] == '\\' ? '/' : state.directory[i];
+                output[state.directoryLength] = '/';
+                for (int i = 0; i < state.file.Length; i++) output[state.directoryLength + 1 + i] = state.file[i] == '\\' ? '/' : state.file[i];
+            });
         }
         private string Location(Die die)
         {
             var constant = AttributeOf(die, 0x1c);
             if (constant is not null) {
                 Value value = constant.Value.Value;
-                string text = value.Text is not null ? "\"" + value.Text + "\"" : value.Bytes is { } block ? "bytes " + Preview(block)
-                    : value.IsSigned ? value.Signed.ToString(CultureInfo.InvariantCulture) : value.Number.ToString(CultureInfo.InvariantCulture);
-                return "Recorded compile-time constant " + text;
+                if (value.Text is not null) return Text(null, "Recorded compile-time constant \"", value.Text, "\"");
+                if (value.Bytes is { } block) return Text(null, "Recorded compile-time constant bytes ", Preview(block));
+                return Text(null, "Recorded compile-time constant ", value.IsSigned ? Number(value.Signed) : Number(value.Number));
             }
             var attribute = AttributeOf(die, 2);
             if (attribute is null) return "Location unavailable (no recorded location)";
             Value location = attribute.Value.Value;
             if (location.Bytes is { } expression) return Expression(expression, die.Unit.AddressSize, die.Offset);
-            if (location.Form is 0x17 or 0x06 or 0x07) return $"Location list { (die.Unit.Version >= 5 ? ".debug_loclists" : ".debug_loc") } + 0x{location.Number:X} (not evaluated)";
+            if (location.Form is 0x17 or 0x06 or 0x07) return Text(null, "Location list ", die.Unit.Version >= 5 ? ".debug_loclists" : ".debug_loc", " + 0x", Number(location.Number, "X"), " (not evaluated)");
             Diagnostic($"Unsupported location attribute form 0x{location.Form:X} at DIE 0x{die.Offset:X}.", isUnsupported: true);
-            return $"Location unavailable (unsupported form 0x{location.Form:X})";
+            return Text(null, "Location unavailable (unsupported form 0x", Number(location.Form, "X"), ")");
         }
         private string Expression(Block block, int addressSize, int dieOffset)
         {
@@ -636,22 +697,28 @@ public static class PeDwarfReader
             var cursor = new Cursor(bytes, block.Start, block.Start + block.Length);
             try {
                 byte opcode = cursor.Byte(); string? value = opcode switch {
-                    0x03 => $"Recorded declared address 0x{cursor.Fixed(addressSize):X} (DW_OP_addr)",
-                    >= 0x50 and <= 0x6f => $"DWARF register {opcode - 0x50}",
-                    >= 0x70 and <= 0x8f => $"DWARF register {opcode - 0x70} base offset {cursor.Sleb()}",
-                    0x90 => $"DWARF register {cursor.Uleb()}",
-                    0x91 => $"Recorded frame base offset {cursor.Sleb()} (DW_OP_fbreg)",
-                    0x92 => $"DWARF register {cursor.Uleb()} base offset {cursor.Sleb()}",
+                    0x03 => Text(null, "Recorded declared address 0x", Number(cursor.Fixed(addressSize), "X"), " (DW_OP_addr)"),
+                    >= 0x50 and <= 0x6f => Text(null, "DWARF register ", Number((ulong)(opcode - 0x50))),
+                    >= 0x70 and <= 0x8f => Text(null, "DWARF register ", Number((ulong)(opcode - 0x70)), " base offset ", Number(cursor.Sleb())),
+                    0x90 => Text(null, "DWARF register ", Number(cursor.Uleb())),
+                    0x91 => Text(null, "Recorded frame base offset ", Number(cursor.Sleb()), " (DW_OP_fbreg)"),
+                    0x92 => Text(null, "DWARF register ", Number(cursor.Uleb()), " base offset ", Number(cursor.Sleb())),
                     _ => null
                 };
                 if (value is not null && cursor.Position == cursor.End) return value;
                 Diagnostic($"Unsupported location expression at DIE 0x{dieOffset:X}; bounded bytes are displayed.", isUnsupported: true);
-                return "Unsupported location expression bytes " + Preview(block);
+                return Text(null, "Unsupported location expression bytes ", Preview(block));
             } catch (DwarfException e) {
+                if (e.Limit) throw;
                 Diagnostic($"Malformed location expression at DIE 0x{dieOffset:X}: {e.Message}", true);
-                return "Location unavailable (malformed expression bytes " + Preview(block) + ")";
+                return Text(null, "Location unavailable (malformed expression bytes ", Preview(block), ")");
             }
         }
-        private string Preview(Block block) => Convert.ToHexString(bytes.AsSpan(block.Start, Math.Min(block.Length, 64))) + (block.Length > 64 ? $"… ({block.Length} bytes)" : "");
+        private string Preview(Block block)
+        {
+            int length = Math.Min(block.Length, 64); ChargeString(length * 2);
+            string hex = Convert.ToHexString(bytes.AsSpan(block.Start, length));
+            return block.Length > 64 ? Text(null, hex, "… (", Number((ulong)block.Length), " bytes)") : hex;
+        }
     }
 }
