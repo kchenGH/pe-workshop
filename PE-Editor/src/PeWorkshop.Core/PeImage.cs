@@ -10,6 +10,7 @@ public sealed record PeField(string Group, string Name, int Offset, int Size, ul
 }
 public sealed record PeSection(string Name, int HeaderOffset, uint VirtualAddress, uint VirtualSize, uint RawOffset, uint RawSize, uint Characteristics)
 {
+    public string RawName { get; init; } = Name;
     public string Permissions => string.Concat((Characteristics & 0x40000000) != 0 ? "R" : "-", (Characteristics & 0x80000000) != 0 ? "W" : "-", (Characteristics & 0x20000000) != 0 ? "X" : "-");
 }
 public sealed record PeDirectory(int Index, string Name, uint Address, uint Size, int EntryOffset, int? FileOffset);
@@ -116,14 +117,15 @@ public sealed class PeImage
         long table = (long)o + optionalSize; Require(table, count * 40, "Section table");
         for (int i = 0; i < count; i++)
         {
-            int s = (int)table + i * 40; string name = Encoding.ASCII.GetString(bytes, s, 8).TrimEnd('\0'); string sg = "Section: " + name;
+            int s = (int)table + i * 40; string rawName = Encoding.ASCII.GetString(bytes, s, 8).TrimEnd('\0');
+            string name = ResolveSectionName(rawName, c); string sg = "Section: " + name;
             uint vs = (uint)Field(sg, "VirtualSize", s + 8, 4), va = (uint)Field(sg, "VirtualAddress", s + 12, 4);
             uint rs = (uint)Field(sg, "SizeOfRawData", s + 16, 4), ro = (uint)Field(sg, "PointerToRawData", s + 20, 4);
             Field(sg, "PointerToRelocations", s + 24, 4); Field(sg, "PointerToLinenumbers", s + 28, 4);
             Field(sg, "NumberOfRelocations", s + 32, 2); Field(sg, "NumberOfLinenumbers", s + 34, 2);
             uint flags = (uint)Field(sg, "Characteristics", s + 36, 4);
             if (rs > 0) Require(ro, rs, $"Raw data for section '{name}'");
-            sections.Add(new(name, s, va, vs, ro, rs, flags));
+            sections.Add(new(name, s, va, vs, ro, rs, flags) { RawName = rawName });
             if ((ulong)va + Math.Max(vs, rs) > uint.MaxValue) warnings.Add($"Section '{name}' virtual range exceeds the RVA address space.");
             if ((ulong)va + Math.Max(vs, rs) > SizeOfImage) warnings.Add($"Section '{name}' extends beyond SizeOfImage.");
             if (rs > 0 && ro < SizeOfHeaders) warnings.Add($"Section '{name}' raw data overlaps the headers.");
@@ -149,6 +151,33 @@ public sealed class PeImage
             if ((address != 0 || size != 0) && offset is null) warnings.Add($"{names[i]} directory does not map to a valid file range.");
         }
         if (HasCertificate) warnings.Add("This image contains an embedded certificate. Editing signed content can invalidate its Authenticode signature; the certificate is preserved.");
+    }
+    private string ResolveSectionName(string rawName, int coff)
+    {
+        if (!rawName.StartsWith('/')) return rawName;
+        try
+        {
+            if (!uint.TryParse(rawName.AsSpan(1), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out uint index) || index < 4)
+                throw new PeFormatException("Invalid decimal string table offset.");
+            uint symbols = U32(coff + 8), count = U32(coff + 12);
+            if (symbols == 0) throw new PeFormatException("COFF symbol table pointer is missing.");
+            ulong table = (ulong)symbols + (ulong)count * 18;
+            Require((long)table, 4, "COFF string table");
+            uint size = U32((int)table);
+            if (size < 4) throw new PeFormatException("COFF string table size is too small.");
+            Require((long)table, size, "COFF string table");
+            if (index >= size) throw new PeFormatException("Name offset is outside the COFF string table.");
+            int start = (int)(table + index), end = (int)(table + size), limit = Math.Min(end, start + 16385), p = start;
+            while (p < limit && bytes[p] != 0) p++;
+            if (p == limit || p == start) throw new PeFormatException("Name is empty, unterminated or longer than 16 KiB.");
+            return new UTF8Encoding(false, true).GetString(bytes, start, p - start);
+        }
+        catch (Exception e) when (e is PeFormatException or DecoderFallbackException)
+        {
+            warnings.Add($"Section name '{rawName}' could not be resolved: {e.Message}");
+            return rawName;
+        }
     }
     private static bool PowerOfTwo(uint n) => n != 0 && (n & (n - 1)) == 0;
     private static bool Overlap(uint a, uint al, uint b, uint bl) => al != 0 && bl != 0 && (ulong)a < (ulong)b + bl && (ulong)b < (ulong)a + al;

@@ -10,6 +10,7 @@ internal static partial class Program
     private static void Main()
     {
         ComparisonTests();
+        DwarfTests();
         foreach (bool x64 in new[] { false, true })
         {
             Test($"headers/{x64}", () => {
