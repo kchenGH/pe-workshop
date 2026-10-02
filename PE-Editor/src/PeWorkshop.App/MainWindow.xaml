@@ -31,7 +31,7 @@
    <Border Background="#171D27" BorderBrush="#2C3645" BorderThickness="0,0,1,0">
     <DockPanel>
      <StackPanel DockPanel.Dock="Top" Margin="23,27,20,17"><TextBlock Text="EXPLORER" Foreground="#7F92AA" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="SidebarFile" Text="No binary open" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,12,0,0"/><TextBlock x:Name="SidebarFormat" Text="PE32 · PE32+" Foreground="#8B9DB5" FontSize="11" Margin="0,5,0,0"/></StackPanel>
-     <StackPanel DockPanel.Dock="Bottom" Margin="18,20"><TextBlock Text="LOCAL WORKSPACE" Foreground="#73879F" FontSize="9"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><TextBlock Text="Fixed-size binary editing" Foreground="#8B9DB5" FontSize="10" VerticalAlignment="Center"/><local:HelpBadge TopicKey="FixedSize"/></StackPanel><TextBlock Text="Hover or click i for help" Foreground="#8B9DB5" FontSize="10" Margin="0,8,0,0"/><TextBlock Text="v1.2" Foreground="#64788F" FontSize="10" Margin="0,6,0,0"/></StackPanel>
+     <StackPanel DockPanel.Dock="Bottom" Margin="18,20"><TextBlock Text="LOCAL WORKSPACE" Foreground="#73879F" FontSize="9"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><TextBlock Text="Fixed-size binary editing" Foreground="#8B9DB5" FontSize="10" VerticalAlignment="Center"/><local:HelpBadge TopicKey="FixedSize"/></StackPanel><TextBlock Text="Hover or click i for help" Foreground="#8B9DB5" FontSize="10" Margin="0,8,0,0"/><TextBlock Text="v1.3" Foreground="#64788F" FontSize="10" Margin="0,6,0,0"/></StackPanel>
      <ListBox x:Name="Navigation" SelectionChanged="Navigation_SelectionChanged" SelectedIndex="0" Style="{StaticResource NavigationList}" ItemContainerStyle="{StaticResource NavigationItem}" IsEnabled="False">
       <ListBoxItem Tag="Overview"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Overview"/><TextBlock Text="Overview" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
       <ListBoxItem Tag="Headers"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Headers"/><TextBlock Text="Headers" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
@@ -39,6 +39,7 @@
       <ListBoxItem Tag="Directories"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Directories"/><TextBlock Text="Data directories" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
       <ListBoxItem Tag="Imports"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Imports"/><TextBlock Text="Imports" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
       <ListBoxItem Tag="Exports"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Exports"/><TextBlock Text="Exports" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
+      <ListBoxItem Tag="Variables"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Variables"/><TextBlock Text="Variables" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
       <ListBoxItem Tag="Hex"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Hex"/><TextBlock Text="Hex editor" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
       <ListBoxItem Tag="Changes"><DockPanel><local:HelpBadge DockPanel.Dock="Right" TopicKey="Changes"/><TextBlock Text="Changes" VerticalAlignment="Center"/></DockPanel></ListBoxItem>
      </ListBox>
@@ -58,6 +59,7 @@
        </StackPanel>
       </Border>
       <StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button Content="Explore PE Workshop itself →" Click="OpenSelf_Click" Background="Transparent" BorderThickness="0" Foreground="#8FBFFF" Padding="0,12"/><local:HelpBadge TopicKey="ExploreSelf"/></StackPanel>
+      <StackPanel Orientation="Horizontal"><Button Content="Explore debug symbols →" Click="OpenDebugSample_Click" Background="Transparent" BorderThickness="0" Foreground="#8FBFFF" Padding="0,12"/><local:HelpBadge TopicKey="VariablesSample"/></StackPanel>
       <TextBlock Text="Files stay on your computer. Edits are saved as a separate copy." Foreground="#73879F" FontSize="11" Margin="0,17,0,0"/>
      </StackPanel>
     </Grid>
@@ -84,10 +86,10 @@
      <Border x:Name="InspectorPanel" Grid.Row="3" Background="#1A2330" BorderBrush="#30415A" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,14,0,0" Visibility="Collapsed">
       <DockPanel>
        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-        <Button x:Name="RevealButton" Content="View in hex" Click="Reveal_Click"/><local:HelpBadge TopicKey="Reveal" Margin="6,0,12,0"/>
+        <Button x:Name="RevealButton" Content="View in hex" Click="Reveal_Click"/><local:HelpBadge x:Name="RevealHelp" TopicKey="Reveal" Margin="6,0,12,0"/>
         <Button x:Name="EditButton" Content="Edit value" Click="Edit_Click" Style="{StaticResource PrimaryButton}"/><local:HelpBadge x:Name="EditHelp" TopicKey="Edit"/>
        </StackPanel>
-       <StackPanel VerticalAlignment="Center"><DockPanel><local:HelpBadge x:Name="SelectionHelp" DockPanel.Dock="Right"/><TextBlock x:Name="SelectionTitle" FontWeight="SemiBold" TextWrapping="Wrap"/></DockPanel><TextBlock x:Name="SelectionDescription" Foreground="#96AAC4" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0"/></StackPanel>
+       <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalAlignment="Center"><StackPanel><DockPanel><local:HelpBadge x:Name="SelectionHelp" DockPanel.Dock="Right"/><TextBlock x:Name="SelectionTitle" FontWeight="SemiBold" TextWrapping="Wrap"/></DockPanel><TextBlock x:Name="SelectionDescription" Foreground="#96AAC4" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0"/></StackPanel></ScrollViewer>
       </DockPanel>
      </Border>
     </Grid>

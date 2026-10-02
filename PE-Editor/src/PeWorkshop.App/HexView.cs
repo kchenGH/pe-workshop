@@ -51,7 +51,7 @@ public sealed class HexView : FrameworkElement
     {
         if (_document is null || offset < 0 || offset >= _document.Data.Length) return;
         _evidenceOffset = offset; _evidenceLength = Math.Clamp(length, 1, _document.Data.Length - offset);
-        ToolTip = $"Comparison evidence: {title}. Pink outlines mark the selected range; amber text marks unsaved edits.";
+        ToolTip = $"Selected evidence: {title}. Pink outlines mark the selected range; amber text marks unsaved edits.";
         GoTo(offset); InvalidateVisual();
     }
 

@@ -5,6 +5,9 @@ try {
     $sampleBuild = Join-Path $PSScriptRoot '../Samples/build.ps1'
     if (-not (Test-Path -LiteralPath $sampleBuild)) { throw 'Samples/build.ps1 is required beside PE-Editor for the comparison checks.' }
     & $sampleBuild
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '../Samples/DebugSymbolsDemo.exe'))) {
+        throw 'Samples/DebugSymbolsDemo.exe is required. Restore the included sample or run Samples/build-debug-symbols.ps1 with MinGW GCC.'
+    }
     dotnet run --project tests/PeWorkshop.Tests -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
     $contained = if ($SelfContained) { 'true' } else { 'false' }

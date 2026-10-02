@@ -1,8 +1,8 @@
 # Native PE teaching samples
 
-The source, scripts, documentation and four teaching executables are covered by the repository's [MIT License](../LICENSE). See [third-party licensing notes](../THIRD_PARTY_NOTICES.md) for external build tools and operating-system dependencies.
+The source, scripts, documentation and five teaching executables are covered by the repository's [MIT License](../LICENSE). See [third-party licensing notes](../THIRD_PARTY_NOTICES.md) for external build tools and operating-system dependencies.
 
-Four small x64 Windows executables for PE Workshop comparisons. They use native Win32 imports and do not need the .NET or Visual C++ runtime. The programs only write console text or display a message box. They do not use networking, persistence, process injection, or destructive operations.
+Four small x64 Windows executables demonstrate PE comparisons; a fifth demonstrates DWARF symbols. They use native Win32 imports and do not need the .NET or Visual C++ runtime. The programs only write console text or display a message box. They do not use networking, persistence, process injection, or destructive operations.
 
 | File | Behavior | PE subsystem |
 | --- | --- | --- |
@@ -10,8 +10,38 @@ Four small x64 Windows executables for PE Workshop comparisons. They use native 
 | `GuiDemo.exe` | Displays a message box; `--self-test` exits silently | Windows GUI, 2 |
 | `OriginalConsole.exe` | Prints `PE Workshop training marker: ORIGINAL.` | Windows CUI, 3 |
 | `ModifiedConsole.exe` | Prints `PE Workshop training marker: MODIFIED.` | Windows CUI, 3 |
+| `DebugSymbolsDemo.exe` | Prints `PE Workshop DWARF demo: result 34.`; retains variable debug records | Windows CUI, 3 |
 
-All successful runs exit with code 0. Console output ends with CRLF. `ModifiedConsole.exe` is produced by byte-patching `OriginalConsole.exe`; it is not compiled from a separate program. The full before/after patch data and file SHA256s are in `manifest.json`.
+All successful runs exit with code 0. Console output ends with CRLF. `ModifiedConsole.exe` is produced by byte-patching `OriginalConsole.exe`; it is not compiled from a separate program. The comparison samples' before/after patch data and file SHA256s are in `manifest.json`. The DWARF sample is built separately and is outside that comparison manifest.
+
+## DWARF variable walkthrough
+
+Choose **Explore debug symbols** in PE Workshop, or open `DebugSymbolsDemo.exe` and select **Variables**. This GCC-built sample retains embedded DWARF 4 records. Its source is [debug_symbols.c](source/debug_symbols.c). Try these names in the filter:
+
+| Name | What to inspect |
+| --- | --- |
+| `global_counter` | Global `int` with an address description |
+| `seed` | Parameter of `compute_score` |
+| `local_total`, `scale` | Locals with different scalar types |
+| `alias`, `pair`, `local_mode` | Typedef, structure and enumeration type summaries |
+| `values`, `pointer` | Array and pointer type descriptions |
+| `block_value` | Variable in a nested lexical block |
+
+Select a row to see its complete declaration and recorded storage description. **View symbol in hex** highlights the DWARF record. It does not show the variable's live value. The source paths have been remapped to avoid embedding the developer's workspace path. The parser does not open source paths or invoke a debugger.
+
+To rebuild these optional fixtures with a native Windows MinGW GCC toolchain:
+
+```powershell
+.\build-debug-symbols.ps1
+# Override the default C:\msys64\ucrt64\bin\gcc.exe:
+.\build-debug-symbols.ps1 -Gcc C:\your-mingw\bin\gcc.exe
+```
+
+The script uses `-O0 -g3`, builds the included `DebugSymbolsDemo.exe` with `-gdwarf-4`, and creates ignored `build/DebugSymbolsDwarf5.exe` (`-gdwarf-5`) and `build/DebugSymbolsStripped.exe` (`strip --strip-debug`) variants. It needs companion `objdump.exe` and `strip.exe` alongside GCC. It uses no C runtime and suppresses the linker timestamp. Different toolchain versions can still change the executable bytes.
+
+`verify-debug-symbols.ps1` independently checks all eleven expected variable/parameter names and the format versions with GNU objdump, checks that stripping removes variable records, and runs only the supplied harmless demo to validate its output and exit code. Inspection in PE Workshop never executes the input. The core tests always check the included DWARF 4 sample and also check the DWARF 5 and stripped fixtures when present.
+
+For your own C program, a typical command is `gcc -O0 -g3 -gdwarf-4 program.c -o program.exe`. Keep debug sections when linking and packaging. `-g3` additionally requests macro information, which Workshop does not browse. Optimization can make some variables unavailable even with full symbols. PDB, compressed/split/external debug information and unsupported forms are reported explicitly.
 
 ## Run and rebuild
 

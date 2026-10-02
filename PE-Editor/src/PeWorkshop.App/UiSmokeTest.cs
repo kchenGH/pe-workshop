@@ -155,6 +155,7 @@ internal static class UiSmokeTest
             && Descendants<TextBox>(root).Single(t => t.ToolTip?.ToString()?.StartsWith("Replacement bytes", StringComparison.Ordinal) == true).Text == "",
             "Loading a new document should reset the hex toolbar.");
         ComparisonSmokeTest.Run(window, output);
+        VariablesSmokeTest.Run(window, output);
         }
         finally
         {

@@ -161,7 +161,9 @@ public partial class MainWindow
         {
             container.Children.Add(new TextBlock
             {
-                Text = CurrentPage == "Changes" ? "Your edits will appear here. Select a header or a byte to make a change." : "No entries in this table. Check Overview for any parsing diagnostics.",
+                Text = CurrentPage == "Changes" ? "Your edits will appear here. Select a header or a byte to make a change."
+                    : CurrentPage == "Variables" ? "No variable declarations were decoded. See the symbol status above."
+                    : "No entries in this table. Check Overview for any parsing diagnostics.",
                 Foreground = Brush("#849BB9"), HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(30), IsHitTestVisible = false
             });
@@ -179,6 +181,8 @@ public partial class MainWindow
         ("Directories", "Index") => "DirectoryIndex", ("Directories", "Name") => "DirectoryName", ("Directories", "Address") => "DirectoryAddress",
         ("Directories", "Size") => "DirectorySize", (_, "AddressType") => "AddressType",
         (_, "Module") => "Module", ("Imports", "Name") => "ImportSymbol", ("Exports", "Name") => "ExportSymbol",
+        ("Variables", "Name") => "VariableName", ("Variables", "Kind") => "VariableKind", ("Variables", "Type") => "VariableType",
+        ("Variables", "Scope") => "VariableScope", ("Variables", "Declaration") => "VariableDeclaration", ("Variables", "Location") => "VariableLocation",
         (_, "Hint") => "Hint", (_, "Iat") => "IAT", (_, "Ordinal") => "Ordinal", (_, "Forwarder") => "Forwarder",
         (_, "Rva") => "RVA", (_, "Offset") => "Offset", (_, "Description") => "Description",
         (_, "Length") => "ByteCount", (_, "Before") => "Before", (_, "After") => "After",
@@ -191,7 +195,7 @@ public partial class MainWindow
         SectionRow section => PeHelpCatalog.ForSection(section.Name),
         DirectoryRow directory => PeHelpCatalog.ForDirectory(directory.Index),
         ImportRow => PeHelpCatalog.Get("ImportSymbol"), ExportRow => PeHelpCatalog.Get("ExportSymbol"),
-        ChangeRow => PeHelpCatalog.Get("Changes"), _ => PeHelpCatalog.Get("Field")
+        ChangeRow => PeHelpCatalog.Get("Changes"), VariableRow => PeHelpCatalog.Get("VariableName"), _ => PeHelpCatalog.Get("Field")
     };
 
     private sealed class RowTopicConverter : IValueConverter
@@ -230,6 +234,8 @@ public partial class MainWindow
         EditHelp.Visibility = EditButton.Visibility;
         SelectionHelp.Topic = selected is null ? null : RowTopic(selected);
         RevealButton.IsEnabled = true;
+        RevealButton.Content = selected is VariableRow ? "View symbol in hex" : "View in hex";
+        RevealHelp.TopicKey = selected is VariableRow ? "VariableReveal" : "Reveal";
         switch (selected)
         {
             case PeField field:
@@ -251,6 +257,12 @@ public partial class MainWindow
             case ChangeRow change:
                 SelectionTitle.Text = change.Description;
                 SelectionDescription.Text = $"{change.Offset} · {change.Length} bytes changed · Ctrl+Z to undo the latest edit"; break;
+            case VariableRow variable:
+                SelectionTitle.Text = $"{variable.Name} · {variable.Type}";
+                SelectionDescription.Text = $"{variable.Kind} · Scope: {variable.Scope}\nDeclaration: {variable.Declaration}\nStorage: {variable.Location}\nSymbol record at 0x{variable.Value.DebugOffset:X8}; no current runtime value is available.";
+                RevealButton.IsEnabled = Document is not null && variable.Value.DebugOffset >= 0 && variable.Value.DebugLength > 0
+                    && (long)variable.Value.DebugOffset + variable.Value.DebugLength <= Document.Data.Length;
+                break;
         }
     }
 

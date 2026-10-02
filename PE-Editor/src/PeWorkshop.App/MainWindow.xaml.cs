@@ -109,6 +109,7 @@ public partial class MainWindow : Window
     private void RenderPage()
     {
         if (Document is null || ViewHost is null) return;
+        CancelVariableRead();
         _activeTable = null;
         _selected = null;
         InspectorPanel.Visibility = Visibility.Collapsed;
@@ -135,6 +136,9 @@ public partial class MainWindow : Window
             case "Exports":
                 SetPage("Exports", $"{Document.Image.Exports.Count:N0} exported symbols · Includes ordinal-only and forwarded exports.");
                 ShowExports(); break;
+            case "Variables":
+                SetPage("Variables", "Names, types and scopes recorded in embedded DWARF debug information. Select a row for its full declaration.");
+                ShowVariables(); break;
             case "Hex":
                 SetPage("Hex editor", "Select a byte and type two hex digits. Changed bytes appear in amber.");
                 ViewHost.Content = BuildHexWorkspace(); break;
@@ -249,6 +253,7 @@ public partial class MainWindow : Window
     private void Reveal_Click(object sender, RoutedEventArgs e)
     {
         if (Document is null) return;
+        var variable = _selected as VariableRow;
         int? offset = _selected switch
         {
             PeField field => field.Offset,
@@ -257,11 +262,17 @@ public partial class MainWindow : Window
             ImportRow import => Document.Image.RvaToOffset(import.Value.IatRva),
             ExportRow export => Document.Image.RvaToOffset(export.Value.Rva),
             ChangeRow change => change.Value.Offset,
+            VariableRow row => row.Value.DebugOffset,
             _ => null
         };
         if (offset is null) { SetStatus("This address is not backed by bytes in the file."); return; }
         Navigate("Hex");
         _hex?.GoTo(offset.Value);
+        if (variable is not null)
+        {
+            _hex?.HighlightEvidence(offset.Value, variable.Value.DebugLength, $"DWARF record: {variable.Name}");
+            SetStatus($"DWARF record for {variable.Name} · highlighted bytes describe the symbol, not its runtime value");
+        }
         _hex?.Focus();
     }
 
@@ -303,7 +314,11 @@ public partial class MainWindow : Window
         return result == MessageBoxResult.No || (result == MessageBoxResult.Yes && SaveCopy());
     }
 
-    private void Window_Closing(object? sender, CancelEventArgs e) => e.Cancel = !ResolveUnsaved();
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        e.Cancel = !ResolveUnsaved();
+        if (!e.Cancel) CancelVariableRead();
+    }
     private void SetPage(string title, string subtitle) { PageTitle.Text = title; PageSubtitle.Text = subtitle; }
     private void SetStatus(string text) => StatusText.Text = text;
     private void ShowError(string title, string message) { SetStatus($"{title}: {message}"); MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning); }

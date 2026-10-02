@@ -39,6 +39,28 @@ The window compares PE structure, declared dependencies and exact bytes. Each ro
 
 The four runnable samples and their source are in the sibling `Samples` folder. See [the sample walkthrough](../../Samples/README.md) for each deliberate alteration and [manifest.json](../../Samples/manifest.json) for exact before/after bytes. These are native x64 Windows programs. `ModifiedConsole.exe` is patched directly from `OriginalConsole.exe`; its added entry stub immediately jumps back to the original code, which prints a changed teaching marker.
 
+## Inspect variable names and debug symbols
+
+Choose **Explore debug symbols** on the welcome screen to load the supplied `DebugSymbolsDemo.exe`, or open your own GCC/MinGW executable and select **Variables**. A typical build command that retains source variable information is:
+
+```powershell
+gcc -O0 -g3 -gdwarf-4 program.c -o program.exe
+```
+
+`-O0` disables optimization, `-g3` requests debug information including macros, and `-gdwarf-4` chooses DWARF version 4. Common embedded DWARF 5 records also work. Workshop does not browse macro definitions. Avoid stripping debug sections after compilation; verbose compiler output by itself does not embed symbols.
+
+1. Filter for `local_total` in the supplied sample. Its name and type come from a compiler declaration; its scope identifies `compute_score`. The source declaration identifies a file and line without opening that path.
+2. Compare `global_counter`, the `seed` parameter and the nested `block_value`. The **Kind** and **Scope** columns distinguish globals, parameters and local blocks. Variables with the same name can belong to separate scopes.
+3. Select a row to read the full **Storage** description. An address, register or frame-base offset tells a debugger where to look in the appropriate execution context. A location list can require an instruction address before it has an answer. Workshop describes these records without evaluating expressions or reading process memory.
+4. Choose **View symbol in hex** to highlight the variable's DWARF declaration bytes in pink. These are metadata describing the symbol, not its live value. Inspection and navigation do not modify the file.
+5. Read the status above the table. **Available** means supported records decoded; **Partial** means some results are incomplete; **NotFound**, **Unsupported** and **Malformed** explain absent, incompatible or damaged data. Diagnostics identify specific limitations. Try a normal release EXE to see the missing-symbol explanation.
+
+This is different from GDB's `info locals`: Workshop can list compiler-recorded locals across functions without running the program, while GDB can inspect values at a stopped execution point. Full symbols do not guarantee storage for every variable, especially in optimized code. Stripped names cannot be reliably reconstructed. A recorded constant is compiler metadata, not a measured runtime value.
+
+The reader supports common embedded little-endian DWARF 2–5 compilation units, 32/64-bit DWARF lengths and 32/64-bit target addresses. Basic/derived types, typedefs, arrays and named aggregates are summarized. Unsupported indexed forms, unit kinds or extensions are diagnosed; complex C++ declarations may be incomplete. It does not load PDB files, follow external debug links, load split/compressed symbols, reconstruct source code, or browse all structure members. Recorded paths can be relative, remapped or stale.
+
+See [Samples](../../Samples/README.md#dwarf-variable-walkthrough) for source, rebuilding and independent GNU objdump verification. Neither GDB nor GCC is needed to use the included sample or inspect supported files.
+
 ## Which view answers which question?
 
 | Your question | View | What the result means |
@@ -48,6 +70,7 @@ The four runnable samples and their source are in the sibling `Samples` folder. 
 | Where are imports, resources or runtime tables located? | Data directories | Address/size pairs locate structures. Per-directory help identifies what this app decodes. |
 | Which ordinary dependencies does it declare? | Imports | Module and symbol records reveal the ordinary import interface, not every runtime dependency or function call. |
 | What interface does it publish? | Exports | Names, ordinals, RVAs and forwarders describe the exported binary interface, not source signatures. |
+| What source variable names and types were retained? | Variables | Embedded DWARF declarations identify recorded names, types, scopes and storage descriptions, without live values. |
 | What bytes occupy this location or match this pattern? | Hex editor | Literal file bytes and an ASCII reading aid, without instruction or resource decoding. |
 | What did I edit in this session? | Changes | Patch offsets and before/after bytes for applied edits in the current undo history. |
 | How do two programs differ, and what might explain that? | Compare files | PE structure and exact byte differences, possible causes, and prioritized evidence to investigate. |

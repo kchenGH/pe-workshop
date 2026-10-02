@@ -16,7 +16,7 @@ public partial class App : Application
             try
             {
                 UiSmokeTest.Run(output);
-                File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: WPF open, navigation, edit, undo/redo, save, help coverage, help interaction, appearance, comparison, evidence highlights, and render checks.\n");
+                File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: WPF open, navigation, edit, undo/redo, save, help coverage, help interaction, appearance, comparison, DWARF variables, evidence highlights, cancellation, and render checks.\n");
                 Shutdown(0);
             }
             catch (Exception ex)
