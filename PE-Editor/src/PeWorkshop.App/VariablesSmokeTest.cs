@@ -81,6 +81,15 @@ internal static class VariablesSmokeTest
             Check(Descendants<TextBlock>(window.ViewHost).Any(t => t.Text.Contains("Compile with GCC")), "Absent symbols need compilation guidance.");
             Capture(window, Path.Combine(output, "variables-absent.png"));
 
+            var unsupported = bytes.ToArray();
+            var infoOffset = (int)document.Image.Sections.Single(s => s.Name == ".debug_info").RawOffset;
+            // Change only the DWARF32 unit's version, keeping its enclosing PE valid.
+            unsupported[infoOffset + 4] = 9; unsupported[infoOffset + 5] = 0;
+            window.LoadDocument(new PeDocument(unsupported)); window.Navigate("Variables"); Wait(window.VariablesLoadTask);
+            Check(window.VariablesResult is { Status: DebugSymbolStatus.Unsupported, Variables.Count: 0 }, "Unsupported DWARF versions must have an explicit status, not fabricated rows.");
+            Check(Descendants<TextBlock>(window.ViewHost).Any(t => t.Text.Contains("not supported") && t.Text.Contains("version", StringComparison.OrdinalIgnoreCase)), "Unsupported symbols need a visible explanation and version diagnostic.");
+            Capture(window, Path.Combine(output, "variables-unsupported.png"));
+
             window.LoadDocument(document); window.Navigate("Variables"); pending = window.VariablesLoadTask;
             var section = document.Image.Sections.Single(s => s.Name == ".debug_info");
             document.ApplyPatch((int)section.RawOffset, Enumerable.Repeat((byte)0xFF, 12).ToArray(), "Malformed DWARF length for smoke test");
